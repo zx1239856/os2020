@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <console.h>
+#include <string.h>
 #include <kdebug.h>
 
 #define TICK_NUM 100
@@ -25,17 +26,19 @@ static void print_ticks() {
  * Must be built at run time because shifted function addresses can't
  * be represented in relocation records.
  * */
-static struct gatedesc idt[256] = {{0}};
+#define NUM_GATES 256
+
+static struct gatedesc idt[NUM_GATES] = {{0}};
 
 static struct pseudodesc idt_pd = {
     sizeof(idt) - 1, (uintptr_t)idt
 };
 
 /* idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S */
-void
-idt_init(void) {
-     /* LAB1 YOUR CODE : STEP 2 */
-     /* (1) Where are the entry addrs of each Interrupt Service Routine (ISR)?
+void idt_init(void)
+{
+    /* LAB1 2017011568 : STEP 2 */
+    /* (1) Where are the entry addrs of each Interrupt Service Routine (ISR)?
       *     All ISR's entry addrs are stored in __vectors. where is uintptr_t __vectors[] ?
       *     __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
       *     (try "make" command in lab1, then you will find vector.S in kern/trap DIR)
@@ -46,11 +49,22 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+    extern uintptr_t __vectors[];
+    for (int i = 0; i < NUM_GATES; ++i)
+    {
+        SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+    }
+    // set trap for syscall
+    SETGATE(idt[T_SYSCALL], 1, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
+    // set trap for user -> kernel
+    SETGATE(idt[T_SWITCH_TOK], 1, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
+    lidt(&idt_pd);
 }
 
 static const char *
-trapname(int trapno) {
-    static const char * const excnames[] = {
+trapname(int trapno)
+{
+    static const char *const excnames[] = {
         "Divide error",
         "Debug",
         "Non-Maskable Interrupt",
@@ -70,21 +84,22 @@ trapname(int trapno) {
         "x87 FPU Floating-Point Error",
         "Alignment Check",
         "Machine-Check",
-        "SIMD Floating-Point Exception"
-    };
+        "SIMD Floating-Point Exception"};
 
-    if (trapno < sizeof(excnames)/sizeof(const char * const)) {
+    if (trapno < sizeof(excnames) / sizeof(const char *const))
+    {
         return excnames[trapno];
     }
-    if (trapno >= IRQ_OFFSET && trapno < IRQ_OFFSET + 16) {
+    if (trapno >= IRQ_OFFSET && trapno < IRQ_OFFSET + 16)
+    {
         return "Hardware Interrupt";
     }
     return "(unknown trap)";
 }
 
 /* trap_in_kernel - test if trap happened in kernel */
-bool
-trap_in_kernel(struct trapframe *tf) {
+bool trap_in_kernel(struct trapframe *tf)
+{
     return (tf->tf_cs == (uint16_t)KERNEL_CS);
 }
 
@@ -134,19 +149,54 @@ print_regs(struct pushregs *regs) {
     cprintf("  eax  0x%08x\n", regs->reg_eax);
 }
 
+static struct trapframe user_tf;
+
+static void to_user_mode(struct trapframe *tf)
+{
+    if (trap_in_kernel(tf))
+    {
+        user_tf = *tf;
+        user_tf.tf_cs = USER_CS;
+        user_tf.tf_ds = user_tf.tf_es = user_tf.tf_fs = user_tf.tf_gs = user_tf.tf_ss = USER_DS;
+        user_tf.tf_eflags |= FL_IOPL_MASK;
+        user_tf.tf_esp = (uint32_t)tf + offsetof(struct trapframe, tf_esp);
+        *((uintptr_t *)tf - 1) = (uint32_t)&user_tf;
+    }
+}
+
+static void to_kernel_mode(struct trapframe *tf)
+{
+    if (!trap_in_kernel(tf))
+    {
+        tf->tf_cs = KERNEL_CS;
+        tf->tf_ds = tf->tf_es = KERNEL_DS;
+        tf->tf_eflags &= ~FL_IOPL_MASK;
+        struct trapframe *frm = (struct trapframe *)(tf->tf_esp - offsetof(struct trapframe, tf_esp));
+        memmove(frm, tf, offsetof(struct trapframe, tf_esp));
+        *((uintptr_t *)tf - 1) = (uint32_t)frm;
+    }
+}
+
 /* trap_dispatch - dispatch based on what type of trap occurred */
 static void
-trap_dispatch(struct trapframe *tf) {
+trap_dispatch(struct trapframe *tf)
+{
     char c;
 
-    switch (tf->tf_trapno) {
+    switch (tf->tf_trapno)
+    {
     case IRQ_OFFSET + IRQ_TIMER:
-        /* LAB1 YOUR CODE : STEP 3 */
+        /* LAB1 2017011568 : STEP 3 */
         /* handle the timer interrupt */
         /* (1) After a timer interrupt, you should record this event using a global variable (increase it), such as ticks in kern/driver/clock.c
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+        ++ticks;
+        if (ticks % TICK_NUM == 0)
+        {
+            print_ticks();
+        }
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
@@ -154,12 +204,24 @@ trap_dispatch(struct trapframe *tf) {
         break;
     case IRQ_OFFSET + IRQ_KBD:
         c = cons_getc();
+        if (c == '0')
+        {
+            to_kernel_mode(tf);
+            print_trapframe(tf);
+        }
+        else if (c == '3')
+        {
+            to_user_mode(tf);
+            print_trapframe(&user_tf);
+        }
         cprintf("kbd [%03d] %c\n", c, c);
         break;
-    //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
+    //LAB1 CHALLENGE 1 : 2017011568 you should modify below codes.
     case T_SWITCH_TOU:
+        to_user_mode(tf);
+        break;
     case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+        to_kernel_mode(tf);
         break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:
@@ -167,7 +229,8 @@ trap_dispatch(struct trapframe *tf) {
         break;
     default:
         // in kernel, it must be a mistake
-        if ((tf->tf_cs & 3) == 0) {
+        if ((tf->tf_cs & 3) == 0)
+        {
             print_trapframe(tf);
             panic("unexpected trap in kernel.\n");
         }
@@ -179,8 +242,8 @@ trap_dispatch(struct trapframe *tf) {
  * the code in kern/trap/trapentry.S restores the old CPU state saved in the
  * trapframe and then uses the iret instruction to return from the exception.
  * */
-void
-trap(struct trapframe *tf) {
+void trap(struct trapframe *tf)
+{
     // dispatch based on what type of trap occurred
     trap_dispatch(tf);
 }

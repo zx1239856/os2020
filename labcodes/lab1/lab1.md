@@ -37,7 +37,7 @@
 
    `-o`:输出的obj文件
 
-   **B. 链接obj文件，生成kernel **
+   **B. 链接obj文件，生成kernel**
 
    ```
    + ld bin/kernel
@@ -274,8 +274,11 @@ asm volatile (
 `trap_dispatch`被调用时，栈内的状态如下：
 
 |       ... (`trapframe` `tf`)                  |
+
 |          %esp (`&tf`)                            |
+
 |          stack frame of `trap`            |
+
 | stack frame of `trap_dispatch`  |
 
 `trap`返回后，服务程序通过`trapframe`更新寄存器内容，从而实现状态切换。因此，在`trap.c`中，只需要将图中的`&tf`指针替换成用户态`trapframe`，就能切换至用户态，反之同理。切换到用户态的代码如下：

@@ -1,6 +1,7 @@
 #include <swap.h>
 #include <swapfs.h>
 #include <swap_fifo.h>
+#include <swap_exclock.h>
 #include <stdio.h>
 #include <string.h>
 #include <memlayout.h>
@@ -37,8 +38,11 @@ swap_init(void)
           panic("bad max_swap_offset %08x.\n", max_swap_offset);
      }
      
-
+#ifdef USE_EXCLOCK_SWAP
+     sm = &swap_manager_exclock;
+#else
      sm = &swap_manager_fifo;
+#endif
      int r = sm->init();
      
      if (r == 0)

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <console.h>
+#include <string.h>
 #include <vmm.h>
 #include <swap.h>
 #include <kdebug.h>
@@ -27,7 +28,9 @@ static void print_ticks() {
  * Must be built at run time because shifted function addresses can't
  * be represented in relocation records.
  * */
-static struct gatedesc idt[256] = {{0}};
+#define NUM_GATES 256
+
+static struct gatedesc idt[NUM_GATES] = {{0}};
 
 static struct pseudodesc idt_pd = {
     sizeof(idt) - 1, (uintptr_t)idt
@@ -36,7 +39,7 @@ static struct pseudodesc idt_pd = {
 /* idt_init - initialize IDT to each of the entry points in kern/trap/vectors.S */
 void
 idt_init(void) {
-     /* LAB1 YOUR CODE : STEP 2 */
+     /* LAB1 2017011568 : STEP 2 */
      /* (1) Where are the entry addrs of each Interrupt Service Routine (ISR)?
       *     All ISR's entry addrs are stored in __vectors. where is uintptr_t __vectors[] ?
       *     __vectors[] is in kern/trap/vector.S which is produced by tools/vector.c
@@ -48,6 +51,16 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+    extern uintptr_t __vectors[];
+    for (int i = 0; i < NUM_GATES; ++i)
+    {
+        SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
+    }
+    // set trap for syscall
+    SETGATE(idt[T_SYSCALL], 1, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
+    // set trap for user -> kernel
+    SETGATE(idt[T_SWITCH_TOK], 1, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
+    lidt(&idt_pd);
 }
 
 static const char *
@@ -136,6 +149,34 @@ print_regs(struct pushregs *regs) {
     cprintf("  eax  0x%08x\n", regs->reg_eax);
 }
 
+static struct trapframe user_tf;
+
+static void to_user_mode(struct trapframe *tf)
+{
+    if (trap_in_kernel(tf))
+    {
+        user_tf = *tf;
+        user_tf.tf_cs = USER_CS;
+        user_tf.tf_ds = user_tf.tf_es = user_tf.tf_fs = user_tf.tf_gs = user_tf.tf_ss = USER_DS;
+        user_tf.tf_eflags |= FL_IOPL_MASK;
+        user_tf.tf_esp = (uint32_t)tf + offsetof(struct trapframe, tf_esp);
+        *((uintptr_t *)tf - 1) = (uint32_t)&user_tf;
+    }
+}
+
+static void to_kernel_mode(struct trapframe *tf)
+{
+    if (!trap_in_kernel(tf))
+    {
+        tf->tf_cs = KERNEL_CS;
+        tf->tf_ds = tf->tf_es = KERNEL_DS;
+        tf->tf_eflags &= ~FL_IOPL_MASK;
+        struct trapframe *frm = (struct trapframe *)(tf->tf_esp - offsetof(struct trapframe, tf_esp));
+        memmove(frm, tf, offsetof(struct trapframe, tf_esp));
+        *((uintptr_t *)tf - 1) = (uint32_t)frm;
+    }
+}
+
 static inline void
 print_pgfault(struct trapframe *tf) {
     /* error_code:
@@ -180,12 +221,17 @@ trap_dispatch(struct trapframe *tf) {
     LAB3 : If some page replacement algorithm(such as CLOCK PRA) need tick to change the priority of pages, 
     then you can add code here. 
 #endif
-        /* LAB1 YOUR CODE : STEP 3 */
+        /* LAB1 2017011568 : STEP 3 */
         /* handle the timer interrupt */
         /* (1) After a timer interrupt, you should record this event using a global variable (increase it), such as ticks in kern/driver/clock.c
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+        ++ticks;
+        if (ticks % TICK_NUM == 0)
+        {
+            print_ticks();
+        }
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
@@ -193,12 +239,24 @@ trap_dispatch(struct trapframe *tf) {
         break;
     case IRQ_OFFSET + IRQ_KBD:
         c = cons_getc();
+        if (c == '0')
+        {
+            to_kernel_mode(tf);
+            print_trapframe(tf);
+        }
+        else if (c == '3')
+        {
+            to_user_mode(tf);
+            print_trapframe(&user_tf);
+        }
         cprintf("kbd [%03d] %c\n", c, c);
         break;
-    //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
+    //LAB1 CHALLENGE 1 : 2017011568 you should modify below codes.
     case T_SWITCH_TOU:
+        to_user_mode(tf);
+        break;
     case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+        to_kernel_mode(tf);
         break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:

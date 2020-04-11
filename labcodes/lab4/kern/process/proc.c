@@ -303,7 +303,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     copy_thread(proc, stack, tf);
     //    5. insert proc_struct into hash_list && proc_list
     bool intr_flag;
-    local_intr_restore(intr_flag);
+    local_intr_save(intr_flag);
     {
         proc->pid = get_pid();
         hash_proc(proc);

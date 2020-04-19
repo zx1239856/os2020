@@ -461,7 +461,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
         if(pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) goto failed; 
         //(2) if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr                  
     }
-    else if (error_code & 3 == 3) {
+    else if ((error_code & 3) == 3) {
         struct Page *page = pte2page(*ptep);
         struct Page *npage = pgdir_alloc_page(mm->pgdir, addr, perm);
         void *src_kvaddr = page2kva(page);

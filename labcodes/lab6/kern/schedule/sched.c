@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <assert.h>
 #include <default_sched.h>
+// CFS Sched only
+#include <cfs_sched.h>
 
 // the list of timer
 static list_entry_t timer_list;
@@ -45,9 +47,11 @@ static struct run_queue __rq;
 void
 sched_init(void) {
     list_init(&timer_list);
-
+#ifndef USE_CFS_SCHED
     sched_class = &default_sched_class;
-
+#else
+    sched_class = &cfs_sched_class;
+#endif
     rq = &__rq;
     rq->max_time_slice = MAX_TIME_SLICE;
     sched_class->init(rq);
@@ -65,6 +69,9 @@ wakeup_proc(struct proc_struct *proc) {
             proc->state = PROC_RUNNABLE;
             proc->wait_state = 0;
             if (proc != current) {
+#ifdef USE_CFS_SCHED
+            proc->sched_flag |= CFS_WAKE_UP;
+#endif
                 sched_class_enqueue(proc);
             }
         }

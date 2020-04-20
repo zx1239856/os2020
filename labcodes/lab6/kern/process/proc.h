@@ -64,7 +64,15 @@ struct proc_struct {
     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process 
     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
+    // For CFS only
+    uint32_t sched_flag;
+    uint32_t last_sched_tick;
 };
+
+// For CFS Only
+#define CFS_WAKE_UP 0x1
+#define CFS_YIELD 0x2
+#define CFS_INIT 0x4
 
 #define PF_EXITING                  0x00000001      // getting shutdown
 

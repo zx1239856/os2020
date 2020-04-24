@@ -44,7 +44,7 @@ SECTIONS {
         *(.data)
     }
 
-    . = ALIGN(0x1000);
+    . = ALIGN(0x100000);
     .data.pgdir : {
         *(.data.pgdir)
     }

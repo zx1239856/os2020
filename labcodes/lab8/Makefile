@@ -318,7 +318,7 @@ QEMUOPTS = -hda $(UCOREIMG) -drive file=$(SWAPIMG),media=disk,cache=writeback -d
 qemu-mon: $(UCOREIMG) $(SWAPIMG) $(SFSIMG)
 	$(V)$(QEMU)  -no-reboot -monitor stdio $(QEMUOPTS) -serial null
 qemu: $(UCOREIMG) $(SWAPIMG) $(SFSIMG)
-	$(V)$(QEMU)  -no-reboot -parallel stdio $(QEMUOPTS) -serial null
+	$(V)$(QEMU)  -no-reboot -parallel null $(QEMUOPTS) -serial stdio
 
 qemu-nox: $(UCOREIMG) $(SWAPIMG) $(SFSIMG)
 	$(V)$(QEMU)  -no-reboot -serial mon:stdio $(QEMUOPTS) -nographic

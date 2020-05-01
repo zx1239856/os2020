@@ -62,10 +62,10 @@ idt_init(void) {
     extern uintptr_t __vectors[];
     for (int i = 0; i < NUM_GATES; ++i)
     {
-        SETGATE(idt[i], 0, KERNEL_CS, __vectors[i], DPL_KERNEL);
+        SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
     }
     // set trap for syscall
-    SETGATE(idt[T_SYSCALL], 1, KERNEL_CS, __vectors[T_SYSCALL], DPL_USER);
+    SETGATE(idt[T_SYSCALL], 1, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
     lidt(&idt_pd);
 }
 
